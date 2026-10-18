@@ -1,8 +1,6 @@
 {
-  "name": "MegaD",
-  "country": "RU",
-  "domains": ["mega"],
+  "name": "MegaD — HA compatibility fork",
+  "homeassistant": "2024.12.1",
   "persistent_directory": "userfiles",
-  "iot_class": ["Assumed State", "Local Push"],
   "render_readme": true
 }
