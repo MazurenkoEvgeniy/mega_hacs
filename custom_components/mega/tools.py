@@ -52,7 +52,7 @@ class PriorityLock(asyncio.Lock):
 
     @property
     def _loop(self):
-        return asyncio.get_event_loop()
+        return asyncio.get_running_loop()
 
     async def acquire(self, priority=0) -> bool:
         """Acquire a lock.

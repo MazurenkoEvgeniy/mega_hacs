@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 
 from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import TEMP_CELSIUS, PERCENTAGE, LIGHT_LUX
+from homeassistant.const import UnitOfTemperature, PERCENTAGE, LIGHT_LUX
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .config_parser import parse_config, DS2413, MCP230, MCP230_OUT, MCP230_IN, PCA9685
@@ -42,7 +42,7 @@ HUM_PATT = re.compile(r"hum:([01234567890\.]+)")
 PRESS_PATT = re.compile(r"press:([01234567890\.]+)")
 LUX_PATT = re.compile(r"lux:([01234567890\.]+)")
 PATTERNS = {TEMP: TEMP_PATT, HUM: HUM_PATT, PRESS: PRESS_PATT, LUX: LUX_PATT}
-UNITS = {TEMP: TEMP_CELSIUS, HUM: PERCENTAGE, PRESS: "mmHg", LUX: LIGHT_LUX}
+UNITS = {TEMP: UnitOfTemperature.CELSIUS, HUM: PERCENTAGE, PRESS: "mmHg", LUX: LIGHT_LUX}
 CLASSES = {
     TEMP: SensorDeviceClass.TEMPERATURE,
     HUM: SensorDeviceClass.HUMIDITY,
@@ -113,7 +113,7 @@ class MegaD:
         self.update_all = update_all if update_all is not None else True
         self.nports = nports
         self.fake_response = fake_response
-        self.loop: asyncio.AbstractEventLoop = None
+        self.loop = loop
         self.hass = hass
         self.host = host
         self.sec = password
@@ -143,6 +143,7 @@ class MegaD:
         self.updater = DataUpdateCoordinator(
             hass,
             self.lg,
+            config_entry=config,
             name="megad",
             update_method=self.poll,
             update_interval=timedelta(seconds=self.poll_interval)
@@ -661,7 +662,7 @@ class MegaD:
             cfg.pop(x, None)
         cfg.update(new)
         self.lg.debug(f"new config: %s", cfg)
-        self.config.data = cfg
+        self.hass.config_entries.async_update_entry(self.config, data=cfg)
         if reload_entry:
             await self.hass.config_entries.async_reload(self.config.entry_id)
         return cfg

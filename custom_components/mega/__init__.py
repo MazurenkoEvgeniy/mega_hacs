@@ -11,7 +11,6 @@ from homeassistant.const import (
     CONF_UNIT_OF_MEASUREMENT, CONF_VALUE_TEMPLATE, CONF_DEVICE_CLASS, CONF_PORT
 )
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers.service import bind_hass
 from homeassistant.helpers import config_validation as cv
 from homeassistant.config_entries import ConfigEntry
 from .const import DOMAIN, CONF_INVERT, CONF_RELOAD, PLATFORMS, CONF_PORTS, CONF_CUSTOM, CONF_SKIP, CONF_PORT_TO_SCAN, \
@@ -151,7 +150,6 @@ ALIVE_STATE = 'alive'
 DEF_ID = 'def'
 _POLL_TASKS = {}
 _hubs = {}
-_subs = {}
 
 
 async def async_setup(hass: HomeAssistant, config: dict):
@@ -188,7 +186,7 @@ async def get_hub(hass, entry):
     data = dict(entry.data)
     data.update(entry.options or {})
     data.update(id=id)
-    hub = MegaD(hass, config=entry, **data, lg=_LOGGER, loop=asyncio.get_event_loop())
+    hub = MegaD(hass, config=entry, **data, lg=_LOGGER, loop=asyncio.get_running_loop())
     hub.mqtt_id = await hub.get_mqtt_id()
     return hub
 
@@ -209,14 +207,17 @@ async def _add_mega(hass: HomeAssistant, entry: ConfigEntry):
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     hub: MegaD = await _add_mega(hass, entry)
     _hubs[entry.entry_id] = hub
-    _subs[entry.entry_id] = entry.add_update_listener(updater)
+    entry.async_on_unload(entry.add_update_listener(updater))
     await hub.start()
-    for platform in PLATFORMS:
-        hass.async_create_task(
-            hass.config_entries.async_forward_entry_setup(
-                entry, platform
-            )
-        )
+    # Preserve the existing per-port devices and their parent identifiers.
+    from homeassistant.helpers import device_registry as dr
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, hub.id)},
+        name=hub.id,
+        manufacturer="ab-log.ru",
+    )
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await hub.updater.async_refresh()
     return True
 
@@ -235,18 +236,18 @@ async def updater(hass: HomeAssistant, entry: ConfigEntry):
     return True
 
 
-async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Handle removal of an entry."""
     id = entry.data.get('id', entry.entry_id)
     hub: MegaD = hass.data[DOMAIN].get(id)
     if hub is None:
         return True
     _LOGGER.debug(f'remove {id}')
-    _hubs.pop(id, None)
+    if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        return False
+    _hubs.pop(entry.entry_id, None)
     hass.data[DOMAIN].pop(id, None)
     hass.data[DOMAIN][CONF_ALL].pop(id, None)
-    for platform in PLATFORMS:
-        await hass.config_entries.async_forward_entry_unload(entry, platform)
     task: asyncio.Task = _POLL_TASKS.pop(id, None)
     if task is not None:
         task.cancel()
@@ -287,7 +288,6 @@ async def _save_service(hass: HomeAssistant, call: ServiceCall):
                 await hub.save()
 
 
-@bind_hass
 async def _get_port(hass: HomeAssistant, call: ServiceCall):
     port = call.data.get('port')
     mega_id = call.data.get('mega_id')
@@ -313,7 +313,6 @@ async def _get_port(hass: HomeAssistant, call: ServiceCall):
                     await hub.get_port(x)
 
 
-@bind_hass
 async def _run_cmd(hass: HomeAssistant, call: ServiceCall):
     mega_id = call.data.get('mega_id')
     cmd = call.data.get('cmd')

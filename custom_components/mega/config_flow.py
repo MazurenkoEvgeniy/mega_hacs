@@ -41,7 +41,7 @@ async def get_hub(hass: HomeAssistant, data):
     # _mqtt = hass.data.get(mqtt.DOMAIN)
     # if not isinstance(_mqtt, mqtt.MQTT):
     #     raise exceptions.MqttNotConfigured("mqtt must be configured first")
-    hub = MegaD(hass, **data, lg=_LOGGER, loop=asyncio.get_event_loop()) #mqtt=_mqtt,
+    hub = MegaD(hass, **data, lg=_LOGGER, loop=asyncio.get_running_loop()) #mqtt=_mqtt,
     hub.mqtt_id = await hub.get_mqtt_id()
     if not await hub.authenticate():
         raise exceptions.InvalidAuth
@@ -105,13 +105,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
-        return OptionsFlowHandler(config_entry)
+        return OptionsFlowHandler()
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
 
-    def __init__(self, config_entry: ConfigEntry):
-        self.config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
         """Manage the options."""
